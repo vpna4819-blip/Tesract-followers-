@@ -1,36 +1,38 @@
-const TARGET_URL = "https://fastfollow.in"; // ഒറിജിനൽ സൈറ്റ്
+// ഇതൊരു മാതൃകാ (Sample) URL മാത്രമാണ്. ഇവിടെ നിങ്ങളുടെ സ്വന്തം വെബ്സൈറ്റ് വിലാസം നൽകാം.
+const TARGET_URL = "https://fastfollow.in"; 
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const targetDomain = new URL(TARGET_URL).hostname;
-    const currentDomain = url.hostname; // നിങ്ങളുടെ ഇപ്പോഴത്തെ പുതിയ ഡൊമെയ്ൻ ഓട്ടോമാറ്റിക് ആയി എടുക്കും
+    const currentDomain = url.hostname;
 
-    // ടാർഗെറ്റ് സൈറ്റിലേക്കുള്ള പുതിയ URL ഉണ്ടാക്കുന്നു
+    // ടാർഗെറ്റ് വെബ്സൈറ്റിലേക്കുള്ള പ്രോക്സി URL തയ്യാറാക്കുന്നു
     const proxyUrl = new URL(request.url);
     proxyUrl.hostname = targetDomain;
     proxyUrl.protocol = "https:";
 
-    // ഹെഡറുകൾ സെറ്റ് ചെയ്യുന്നു
+    // ആവശ്യമായ ഹെഡറുകൾ ക്രമീകരിക്കുന്നു
     const newHeaders = new Headers(request.headers);
     newHeaders.set("Host", targetDomain);
     newHeaders.set("Origin", TARGET_URL);
     newHeaders.set("Referer", TARGET_URL);
-    newHeaders.delete("Accept-Encoding"); // കംപ്രഷൻ ഒഴിവാക്കാൻ
+    newHeaders.delete("Accept-Encoding"); // ഡാറ്റ കംപ്രസ്സ് ചെയ്യാതിരിക്കാൻ
+    
+    // ഇംഗ്ലീഷ് ഭാഷ ആവശ്യപ്പെടുന്നു
+    newHeaders.set("Accept-Language", "en-US,en;q=0.9");
 
     const modifiedRequest = new Request(proxyUrl.toString(), {
       method: request.method,
       headers: newHeaders,
       body: request.body,
-      // 'follow' മാറ്റി 'manual' ആക്കി. ഇത് റീഡയറക്റ്റ് ലൂപ്പ് ഒഴിവാക്കും!
-      redirect: "manual", 
+      redirect: "manual", // റീഡയറക്റ്റ് ലൂപ്പ് ഒഴിവാക്കാൻ
     });
 
     const response = await fetch(modifiedRequest);
     const responseHeaders = new Headers(response.headers);
 
-    // --- റീഡയറക്റ്റ് പ്രശ്നം പരിഹരിക്കുന്ന ഭാഗം ---
-    // സൈറ്റ് എങ്ങോട്ടെങ്കിലും റീഡയറക്റ്റ് ചെയ്താൽ അത് നമ്മുടെ പുതിയ ഡൊമെയ്‌നിലേക്ക് തന്നെ മാറ്റുന്നു
+    // റീഡയറക്റ്റുകൾ കൈകാര്യം ചെയ്യുന്ന ഭാഗം
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = responseHeaders.get("Location");
       if (location) {
@@ -46,121 +48,84 @@ export default {
 
     const contentType = responseHeaders.get("content-type") || "";
 
-    // HTML ആണെങ്കിൽ മാത്രം എഡിറ്റ് ചെയ്യുക
+    // HTML പേജുകളിൽ മാത്രം മാറ്റങ്ങൾ വരുത്തുന്നു
     if (contentType.includes("text/html")) {
       let html = await response.text();
 
-      // 1. ബ്രാൻഡിംഗ് മാറ്റുന്നു (tesseract.local ന് പകരം currentDomain ഉപയോഗിക്കുന്നു)
-      html = html.replace(/FastFollow/gi, "Tesseract");
-      html = html.replace(/Fast Follow/gi, "Tesseract");
+      // 1. അടിസ്ഥാന മാറ്റങ്ങൾ
+      html = html.replace(/OldBrandName/gi, "NewBrandName");
       html = html.replace(new RegExp(targetDomain, "gi"), currentDomain);
+      html = html.replace(/lang="[^"]*"/gi, 'lang="en"');
 
-      // 2. തുർക്കിഷ് വാക്കുകൾ ഇംഗ്ലീഷിലേക്ക് മാറ്റുന്നു
-      html = html.replace(/GİRİŞ/g, "LOGIN");
-      html = html.replace(/Giriş Yap/gi, "Sign In");
-      html = html.replace(/NASIL ÇALIŞIR/gi, "HOW IT WORKS");
-      html = html.replace(/takipçi/gi, "followers");
-      html = html.replace(/beğeni/gi, "likes");
-      html = html.replace(/Araçlar/gi, "Tools");
-      html = html.replace(/Paketler/gi, "Packages");
-
-      // 3. ലിക്വിഡ് ഗ്ലാസ് (Glassmorphism) CSS & ഫൂട്ടർ റിമൂവൽ
+      // 2. അനാവശ്യ ഭാഗങ്ങൾ ഒഴിവാക്കാനുള്ള CSS
       const customStyles = `
         <style>
-          .navbar-brand img, .brand img, header svg { display: none !important; }
-          .navbar-brand, a.brand, .logo {
-            font-size: 0 !important;
-            display: inline-flex !important;
-            align-items: center !important;
-          }
-          .navbar-brand::after, a.brand::after, .logo::after {
-            content: "TESSERACT" !important;
-            font-size: 22px !important;
-            font-weight: 800 !important;
-            color: #ffffff !important;
-            letter-spacing: 1.5px !important;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5) !important;
-          }
-          body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%) !important;
-            color: #f8fafc !important;
-            min-height: 100vh !important;
-          }
-          header, .navbar, nav {
-            background: rgba(255, 255, 255, 0.05) !important;
-            backdrop-filter: blur(12px) !important;
-            -webkit-backdrop-filter: blur(12px) !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-          }
-          .card, .box, .container > div, form {
-            background: rgba(255, 255, 255, 0.07) !important;
-            backdrop-filter: blur(16px) !important;
-            -webkit-backdrop-filter: blur(16px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-            border-radius: 16px !important;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
-          }
-          .btn, button, input[type="submit"], a.btn {
-            background: rgba(255, 255, 255, 0.12) !important;
-            backdrop-filter: blur(8px) !important;
-            -webkit-backdrop-filter: blur(8px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.25) !important;
-            border-radius: 10px !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            transition: all 0.3s ease !important;
-          }
-          .btn:hover, button:hover {
-            background: rgba(255, 255, 255, 0.25) !important;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2) !important;
-          }
-          footer, .footer, [class*="footer"] {
+          /* ഹെഡറും ഫുട്ടറും ഒഴിവാക്കാൻ */
+          header, .navbar, .top-bar, .header, #header, nav,
+          footer, .footer, #footer, .bottom-bar {
             display: none !important;
           }
-          .security-alert-box {
-            background: rgba(220, 38, 38, 0.15) !important;
-            border: 1px solid rgba(239, 68, 68, 0.5) !important;
-            border-radius: 12px !important;
-            padding: 14px 16px !important;
-            margin: 16px auto !important;
-            max-width: 90% !important;
-            color: #fca5a5 !important;
-            font-size: 13px !important;
-            line-height: 1.5 !important;
-            text-align: center !important;
-            backdrop-filter: blur(8px) !important;
-            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.2) !important;
+          
+          /* ബൈ ഫോളോവേഴ്സ് ബട്ടണും അനുബന്ധ ക്ലാസുകളും മറയ്ക്കാൻ */
+          .btn-danger, a[href*="bayi"], a[href*="paket"], a[href*="buy"], .buy-followers {
+            display: none !important;
           }
-          .security-alert-box strong {
-            color: #ef4444 !important;
-            display: block !important;
-            font-size: 14px !important;
-            margin-bottom: 4px !important;
-            text-transform: uppercase !important;
+
+          body {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin-top: 0 !important;
           }
         </style>
       `;
 
-      // 4. വാണിംഗ് ബോക്സ്
-      const warningHtml = `
-        <div class="security-alert-box">
-          <strong>⚠️ സുരക്ഷാ മുന്നറിയിപ്പ് / SECURITY WARNING</strong>
-          ഇവിടെ ലോഗിൻ ചെയ്യാൻ നിർബന്ധമായും ഒരു ഡമ്മി/ഫേക്ക് അക്കൗണ്ട് മാത്രം ഉപയോഗിക്കുക. യാതൊരു കാരണവശാലും നിങ്ങളുടെ ഒറിജിനൽ ഇൻസ്റ്റാഗ്രാം പാസ്‌വേഡ് ഇവിടെ നൽകരുത്. ഒറിജിനൽ അക്കൗണ്ട് നൽകിയാൽ സുരക്ഷാ ഭീഷണിയും ഹാക്കിംഗ് സാധ്യതയും ഉണ്ടായേക്കാം.
-        </div>
+      // 3. "Buy Followers", "Tools" എന്നിവ കൃത്യമായി നീക്കം ചെയ്യുന്നതിനുള്ള സ്ക്രിപ്റ്റ്
+      const customScript = `
+        <script>
+          document.addEventListener("DOMContentLoaded", function() {
+            function removeElements() {
+              // പേജിലെ എല്ലാ ലിങ്കുകളും ബട്ടണുകളും പരിശോധിക്കുന്നു
+              document.querySelectorAll('a, button, div, span, p, h1, h2, h3, h4').forEach(function(el) {
+                const text = el.innerText ? el.innerText.trim().toLowerCase() : "";
+                
+                // 1. "Tools" അല്ലെങ്കിൽ ടർക്കിഷ് വാക്കായ "Araçlar" ഒഴിവാക്കുന്നു
+                if (text === "tools" || text === "araçlar" || text === "araclar" || text.startsWith("tools")) {
+                  el.remove();
+                }
+
+                // 2. "Buy Followers" / "Takipçi Satın Al" ബട്ടൺ ഒഴിവാക്കുന്നു
+                if (text.includes("buy followers") || text.includes("takipçi satın al") || text.includes("takipci satin al")) {
+                  // ബട്ടൺ സ്ഥിതിചെയ്യുന്ന പ്രധാന കണ്ടെയ്നർ തന്നെ നീക്കം ചെയ്യുന്നു
+                  const parent = el.closest('a') || el.closest('button') || el;
+                  parent.remove();
+                }
+              });
+            }
+
+            // ആദ്യ തവണ റൺ ചെയ്യുന്നു
+            removeElements();
+
+            // എന്തെങ്കിലും ഡൈനാമിക് ആയി ലോഡ് ആയാലും അവ ഒഴിവാക്കാൻ ഒബ്സർവർ
+            const observer = new MutationObserver(removeElements);
+            observer.observe(document.body, { childList: true, subtree: true });
+          });
+        </script>
       `;
 
+      // സ്റ്റൈലുകൾ </head> ടാഗിന് മുൻപിൽ ചേർക്കുന്നു
       html = html.replace("</head>", customStyles + "</head>");
 
-      if (html.includes("</form>")) {
-        html = html.replace("</form>", "</form>" + warningHtml);
+      // സ്ക്രിപ്റ്റ് </body> ടാഗിന് മുൻപിൽ ചേർക്കുന്നു
+      if (html.includes("</body>")) {
+        html = html.replace("</body>", customScript + "</body>");
       } else {
-        html = html.replace("</body>", warningHtml + "</body>");
+        html += customScript;
       }
 
-      // എററുകൾ വരാതിരിക്കാൻ ഈ ഹെഡറുകൾ കളയണം
+      // എററുകൾ ഒഴിവാക്കാൻ ഈ ഹെഡറുകൾ നീക്കം ചെയ്യുന്നു
       responseHeaders.delete("content-encoding");
       responseHeaders.delete("content-length");
-      responseHeaders.delete("content-security-policy"); // ഡിസൈൻ ബ്ലോക്ക് ആവാതിരിക്കാൻ
+      responseHeaders.delete("content-security-policy"); 
       responseHeaders.delete("x-frame-options");
 
       return new Response(html, {
@@ -170,11 +135,11 @@ export default {
       });
     }
 
-    // HTML അല്ലാത്തവ (CSS, JS, Images) നേരിട്ട് കൈമാറുന്നു
+    // HTML അല്ലാത്ത ഫയലുകൾ മാറ്റങ്ങളില്ലാതെ നൽകുന്നു
     return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
     });
   },
 };
