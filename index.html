@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start Now</title>
+    <style>
+        /* കറുപ്പ് നിറം പൂർണ്ണമായി ഒഴിവാക്കി, RGB നിറങ്ങൾ ഒഴുകുന്ന അനിമേഷൻ */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            
+            /* RGB നിറങ്ങൾ വശങ്ങളിലേക്ക് നീങ്ങുന്ന ബാക്ക്ഗ്രൗണ്ട് */
+            background: linear-gradient(135deg, #ff0000, #00ff00, #0000ff, #ff0000, #00ff00);
+            background-size: 500% 500%;
+            animation: flowRGB 10s ease-in-out infinite;
+        }
+
+        /* നിറങ്ങൾ എല്ലാ മൂലകളിലേക്കും സഞ്ചരിക്കാനുള്ള അനിമേഷൻ */
+        @keyframes flowRGB {
+            0% { background-position: 0% 0%; }
+            25% { background-position: 100% 0%; }
+            50% { background-position: 100% 100%; }
+            75% { background-position: 0% 100%; }
+            100% { background-position: 0% 0%; }
+        }
+
+        /* കണ്ടന്റ് സെന്റർ ചെയ്യാനുള്ള കോഡ് */
+        .content {
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* പച്ച ബട്ടൺ ഡിസൈൻ */
+        .start-btn {
+            background-color: #00e600;
+            color: black;
+            font-size: 22px;
+            font-weight: 900;
+            padding: 16px 45px;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.4); /* ബട്ടണിന് വ്യക്തത നൽകാൻ ചെറിയ ഷാഡോ */
+            transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 8px 35px rgba(0, 0, 0, 0.6);
+            background-color: #00ff00;
+        }
+
+        .start-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* വേർഷൻ നമ്പർ ഡിസൈൻ */
+        .version {
+            margin-top: 25px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 8px rgba(0, 0, 0, 0.8); /* നിറങ്ങൾക്ക് മുകളിൽ എഴുത്ത് വ്യക്തമായി കാണാൻ ഷാഡോ */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ബട്ടണും വേർഷൻ നമ്പറും മാത്രം -->
+    <div class="content">
+        <button class="start-btn" onclick="openFullscreenAndRedirect()">START NOW</button>
+        <div class="version">Beta Version 1.0</div>
+    </div>
+
+    <script>
+        function openFullscreenAndRedirect() {
+            const targetUrl = "https://tesseract.vpna4819.workers.dev/";
+            
+            // ഫുൾസ്ക്രീൻ ആക്കാനുള്ള സംവിധാനം
+            let elem = document.documentElement;
+            
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().then(() => {
+                    window.location.href = targetUrl;
+                }).catch((err) => {
+                    // ഫുൾസ്ക്രീൻ പിന്തുണയ്ക്കാത്ത സാഹചര്യത്തിൽ നേരിട്ട് ലിങ്കിലേക്ക് പോകാൻ 
+                    window.location.href = targetUrl;
+                });
+            } else if (elem.webkitRequestFullscreen) { /* Safari */
+                elem.webkitRequestFullscreen();
+                window.location.href = targetUrl;
+            } else if (elem.msRequestFullscreen) { /* IE11 */
+                elem.msRequestFullscreen();
+                window.location.href = targetUrl;
+            } else {
+                window.location.href = targetUrl;
+            }
+        }
+    </script>
+
+</body>
+</html>
