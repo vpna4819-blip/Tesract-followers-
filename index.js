@@ -7,7 +7,7 @@ export default {
     const currentDomain = url.hostname;
 
     // പേജുകൾ തിരിച്ചറിയുന്നു
-    const isLoginPage = url.pathname.includes("login") || url.pathname.includes("giris");
+    const isLoginPage = url.pathname.includes("login") || url.pathname.includes("giris") || url.pathname.includes("auth");
     const isHomePage = (url.pathname === "/" || url.pathname === "/index.php") && !isLoginPage;
 
     const proxyUrl = new URL(request.url);
@@ -57,6 +57,7 @@ export default {
       html = html.replace(/Your Gift.*?Free Followers\./gi, "");
       html = html.replace(/Click and Share on Social Media(?:strong)?/gi, "");
 
+      // CSS സ്റ്റൈലുകൾ (ലോഗിൻ ഫോം കൃത്യമായി നിലനിർത്താൻ മാറ്റങ്ങൾ വരുത്തിയിട്ടുണ്ട്)
       const customStyles = `
         <style>
           /* പഴയ ഹെഡറും ഫുട്ടറും മാത്രം ഒഴിവാക്കാൻ */
@@ -78,9 +79,16 @@ export default {
             overflow-x: hidden;
           }
           
-          /* പഴയ ചുവന്ന ബട്ടണും ബൈ പാക്കേജ് ലിങ്കുകളും മാത്രം ഒഴിവാക്കുന്നു */
-          .btn-danger, .buy-followers, a[href*="bayi"], a[href*="buy"], a[href*="paket"] {
+          /* പഴയ ബൈ പാക്കേജ് ലിങ്കുകൾ മാത്രം ഒഴിവാക്കുന്നു. ലോഗിൻ ബട്ടൺ പോവാതിരിക്കാൻ btn-danger ഒഴിവാക്കി */
+          .buy-followers, a[href*="bayi"], a[href*="buy"], a[href*="paket"] {
             display: none !important;
+          }
+
+          /* --- ലോഗിൻ ഫോം എപ്പോഴും വിസിബിൾ ആക്കാൻ ഉള്ള സുരക്ഷാ കോഡ് --- */
+          form, .login-container, .card, input, button[type="submit"], .btn-primary, .btn-danger {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
           }
 
           /* --- പൊതുവായ ഫുട്ടർ ഒപ്റ്റിമൈസേഷൻ --- */
@@ -174,11 +182,13 @@ export default {
       let globalScript = `
         <script>
           document.addEventListener("DOMContentLoaded", function() {
+            const isLoginPage = ${isLoginPage}; // Server-ൽ നിന്നും ലോഗിൻ പേജ് ആണോ എന്ന് പരിശോധിക്കുന്നു
+            
             function safeCleanup() {
-              
+              // 1. അനാവശ്യ ലിങ്കുകളും ടെക്സ്റ്റുകളും മാത്രം ഹൈഡ് ചെയ്യുന്നു
               document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong').forEach(function(el) {
-                // ലോഗിൻ ഫോമിനകത്തുള്ള ഘടകങ്ങൾ തൊടരുത്
-                if (el.closest('form') || el.closest('.login-box') || el.closest('#login-form')) return;
+                // ലോഗിൻ ഫോമിനകത്തുള്ളതോ, ഇൻപുട്ട് ഉള്ളതോ ആയ ഘടകങ്ങൾ തൊടരുത്
+                if (el.closest('form') || el.closest('input') || el.closest('.login')) return;
 
                 const text = el.innerText ? el.innerText.trim().toLowerCase() : "";
                 
@@ -194,12 +204,6 @@ export default {
                   return;
                 }
 
-                // ലോഗിൻ സപ്പോർട്ട് ചോദ്യങ്ങൾ മാത്രം
-                if (text.includes("can't log in") || text.includes("let us know") || text.includes("giriş yapamıyorum")) {
-                  el.style.display = "none";
-                  return;
-                }
-
                 // ഗൂഗിൾ ട്രാൻസ്ലേറ്റ് ടെക്സ്റ്റ്
                 if (text.includes("select language") || text.includes("dil seç") || text.includes("powered by google")) {
                   el.style.display = "none";
@@ -207,20 +211,23 @@ export default {
                 }
               });
 
-              // 2. ടെലിഗ്രാം ബോക്സ്, കൂപ്പൺ ബോക്സ് എന്നിവ മാത്രം കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു (ഫോമുകളെ ബാധിക്കില്ല)
-              document.querySelectorAll('.card, .alert, .panel').forEach(function(box) {
-                 // ലോഗിൻ ഫോം ഉള്ള ബോക്സ് ആണെങ്കിൽ ഒഴിവാക്കുക (കൂടുതൽ സുരക്ഷ)
-                if (box.querySelector('form') || box.querySelector('input[type="password"]') || box.querySelector('input[name="username"]')) {
-                  return; 
-                }
-                const boxText = box.innerText.toLowerCase();
-                if (boxText.includes("telegram") || boxText.includes("coupon") || boxText.includes("kupon")) {
-                  box.style.display = "none";
-                }
-              });
+              // 2. ടെലിഗ്രാം ബോക്സ്, കൂപ്പൺ ബോക്സ് എന്നിവ ഹൈഡ് ചെയ്യുന്നു
+              // എന്നാൽ ലോഗിൻ പേജിൽ പ്രധാന കാർഡുകൾ ഹൈഡ് ആയി പോകാതിരിക്കാൻ പ്രത്യേക സുരക്ഷ
+              if (!isLoginPage) {
+                document.querySelectorAll('.card, .alert, .panel').forEach(function(box) {
+                  if (box.querySelector('form') || box.querySelector('input') || box.querySelector('button[type="submit"]')) {
+                    return; // ഇൻപുട്ട് ഉണ്ടെങ്കിൽ ഒഴിവാക്കുക
+                  }
+                  const boxText = box.innerText.toLowerCase();
+                  if (boxText.includes("telegram") || boxText.includes("coupon") || boxText.includes("kupon")) {
+                    box.style.display = "none";
+                  }
+                });
+              }
             }
 
             safeCleanup();
+            // ഡൈനാമിക് ആയി ഫോം ലോഡ് ആവുകയാണെങ്കിൽ അത് നിലനിർത്താൻ
             new MutationObserver(safeCleanup).observe(document.body, { childList: true, subtree: true });
           });
         </script>
