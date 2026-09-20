@@ -49,7 +49,7 @@ export default {
     if (contentType.includes("text/html")) {
       let html = await response.text();
 
-      // കൃത്യമായ പേജ് ഐഡന്റിഫിക്കേഷൻ (HTML കണ്ടന്റ് വഴിയും)
+      // കൃത്യമായ പേജ് ഐഡന്റിഫിക്കേഷൻ
       const isLogin = isLoginPageUrl || html.includes('type="password"');
       const isHome = isHomePageUrl && !isLogin; 
 
@@ -64,7 +64,7 @@ export default {
       // CSS സ്റ്റൈലുകൾ (ലോഗിൻ ഫോം ഹൈഡ് ആവാത്ത സുരക്ഷിതമായ റൂളുകൾ)
       const customStyles = `
         <style>
-          /* പഴയ ഹെഡറും ഫുട്ടറും മാത്രം ഒഴിവാക്കാൻ (.header ഒഴിവാക്കി കാരണം അത് card-header-നെ ബാധിച്ചേക്കാം) */
+          /* പഴയ ഹെഡറും ഫുട്ടറും മാത്രം ഒഴിവാക്കാൻ */
           header, .navbar, .top-bar, nav, footer, .footer, #footer, .bottom-bar {
             display: none !important;
           }
@@ -115,7 +115,7 @@ export default {
             font-size: 15px;
           }
 
-          /* --- ലോഗിൻ പേജിലെ ഗ്രേപ്പ് ഫുട്ടർ --- */
+          /* --- ലോഗിൻ & മെയിൻ പേജിലെ ഗ്രേപ്പ് ഫുട്ടർ --- */
           #grape-login-footer {
             background-color: #6f2da8;
             color: white; 
@@ -195,7 +195,10 @@ export default {
                     "new vehicles will be added soon", "stay on track",
                     "premium araçlar", "oto beğeni paketleri", "non followers",
                     "join our exclusive telegram", "earn 200 credits",
-                    "use coupon", "enter your coupon code", "increase your credits"
+                    "use coupon", "enter your coupon code", "increase your credits",
+                    "stay updated instantly", "join channel",
+                    "follow this section tightly", "discount sales started",
+                    "special discount started"
                   ];
 
                   let shouldHide = hidePhrases.some(phrase => text.includes(phrase));
@@ -205,7 +208,7 @@ export default {
                   }
                 });
 
-                // 2. ടെലിഗ്രാം, കൂപ്പൺ, ടർക്കിഷ് മെനു ബോക്സുകൾ പൂർണ്ണമായി ഹൈഡ് ചെയ്യുന്നു
+                // 2. വാട്സ്ആപ്പ്, ടെലിഗ്രാം, കൂപ്പൺ, ടർക്കിഷ് മെനു ബോക്സുകൾ പൂർണ്ണമായി ഹൈഡ് ചെയ്യുന്നു
                 document.querySelectorAll('.card, .alert, .panel, .list-group, ul, .box').forEach(function(box) {
                   if (box.querySelector('form') || box.querySelector('input')) {
                     return; // ലോഗിൻ ഫോം ഉള്ള ബോക്സ് ആണെങ്കിൽ ഒഴിവാക്കുക
@@ -219,7 +222,10 @@ export default {
                     boxText.includes("earn 200 credits") ||
                     boxText.includes("premium araçlar") ||
                     boxText.includes("new vehicles") ||
-                    boxText.includes("stay on track")
+                    boxText.includes("stay on track") ||
+                    boxText.includes("stay updated instantly") ||
+                    boxText.includes("follow this section") ||
+                    boxText.includes("discount sales")
                   ) {
                     box.style.setProperty("display", "none", "important");
                   }
@@ -235,9 +241,52 @@ export default {
         html = html.replace("</body>", globalScript + "</body>");
       }
 
-      // ഫൂട്ടറുകൾ പരസ്പരം മാറിപ്പോകാതിരിക്കാൻ കൃത്യമായ 'if... else if' ലോജിക്
-      if (isLogin) {
-        const loginPageExtras = `
+      // ഹോം പേജിൽ ഗ്രേ ഫൂട്ടർ, ബാക്കി എല്ലാ പേജിലും (ലോഗിൻ & മെയിൻ ഡാഷ്‌ബോർഡ്) പർപ്പിൾ ഫൂട്ടർ
+      if (isHome) {
+        const homePageExtras = `
+          <div id="custom-new-footer" class="shared-footer-box">
+            <div class="footer-top-row">
+              <select id="home-lang-selector" class="green-translate-select" onchange="changeHomeLang()">
+                <option value="en">🌐 Translate: English</option>
+                <option value="ml">🌐 Malayalam (മലയാളം)</option>
+                <option value="mg">🌐 Manglish (മംഗ്ലീഷ്)</option>
+              </select>
+            </div>
+
+            <div id="home-lang-en" class="content-box-text">
+              <h3>Disclaimer</h3>
+              <p>All data, features, and services accessible via this platform are aggregated from external sources and are subject to their respective terms and policies. This platform serves solely as an independent interface.</p>
+              <p style="color: white;">This platform functions solely as an independent gateway relaying external third-party services. All engagements, including follower or like increments, are utilized entirely at the user's own risk. The developer holds zero liability for any account penalties or enforcement measures taken by Instagram arising from the use of this interface.📍🔊</p>
+              <p>Interface designed & maintained by <span class="dev-name">Samad.!!😜😁</span></p>
+            </div>
+
+            <div id="home-lang-ml" class="content-box-text" style="display: none;">
+              <h3>നിരാകരണം (Disclaimer)</h3>
+              <p>ഈ പ്ലാറ്റ്‌ഫോം വഴി ലഭ്യമാകുന്ന എല്ലാ ഡാറ്റയും ഫീച്ചറുകളും സേവനങ്ങളും ബാഹ്യ ഉറവിടങ്ങളിൽ നിന്ന് ശേഖരിച്ചവയാണ്, അവ അതത് നിബന്ധനകൾക്കും നയങ്ങൾക്കും വിധേയമാണ്. ഈ പ്ലാറ്റ്‌ഫോം ഒരു സ്വതന്ത്ര ഇന്റർഫേസ് മാത്രമായി പ്രവർത്തിക്കുന്നു.</p>
+              <p style="color: white;">ഈ പ്ലാറ്റ്‌ഫോം ബാഹ്യ മൂന്നാം കക്ഷി സേവനങ്ങൾ കൈമാറുന്ന ഒരു സ്വതന്ത്ര ഗേറ്റ്‌വേയായി മാത്രമാണ് പ്രവർത്തിക്കുന്നത്. ഫോളോവേഴ്‌സ് അല്ലെങ്കിൽ ലൈക്കുകൾ വർദ്ധിപ്പിക്കുന്നത് ഉൾപ്പെടെയുള്ള എല്ലാ ഇടപെടലുകളും ഉപയോക്താവിന്റെ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രമാണ് ഉപയോഗിക്കുന്നത്. ഈ ഇന്റർഫേസ് ഉപയോഗിക്കുന്നത് വഴി ഇൻസ്റ്റാഗ്രാം സ്വീകരിക്കുന്ന ഏതെങ്കിലും അക്കൗണ്ട് പെനാൽറ്റികൾക്കോ നടപടികൾക്കോ ഡെവലപ്പർക്ക് യാതൊരു ഉത്തരവാദിത്തവുമില്ല.📍🔊</p>
+              <p>ഡിസൈൻ & പരിപാലനം: <span class="dev-name">Samad.!!😜😁</span></p>
+            </div>
+
+            <div id="home-lang-mg" class="content-box-text" style="display: none;">
+              <h3>Disclaimer</h3>
+              <p>Ee platform vazhi labhyamunna ella datayum featuresum sevanangalum bahya urvidangalil ninnu shekharichavayanu, ava athathu nibandhanakkalkkum niyamangalkkum vidheyamanu. Ee platform oru sathanthra interface mathramayi pravarthikkunnu.</p>
+              <p style="color: white;">Ee platform bahya moonnam kakshi sevanangal kaimarunna oru sathanthra gateway ayi mathramanu pravarthikkunnu. Followers allengil likes vardhippikkunnu ulppatedulla ella idapedukalum upayokthavude swantham utharavadithathil mathramanu upayogikkunnathu. Ee interface upayogikkunnu vazhi Instagram sweekarikkunna ethenkilum account penaltieskko nadapatikkalkko developerku yathoru utharavadithavumilla.📍🔊</p>
+              <p>Design & maintain cheythathu: <span class="dev-name">Samad.!!😜😁</span></p>
+            </div>
+          </div>
+
+          <script>
+            function changeHomeLang() {
+              var lang = document.getElementById("home-lang-selector").value;
+              document.getElementById("home-lang-en").style.display = (lang === 'en') ? 'block' : 'none';
+              document.getElementById("home-lang-ml").style.display = (lang === 'ml') ? 'block' : 'none';
+              document.getElementById("home-lang-mg").style.display = (lang === 'mg') ? 'block' : 'none';
+            }
+          </script>
+        `;
+        html = html.replace("</body>", homePageExtras + "</body>");
+      } else {
+        const grapeFooterExtras = `
           <div id="grape-login-footer" class="shared-footer-box">
             <div class="footer-top-row">
               <select id="lang-selector" class="green-translate-select" onchange="changeGrapeLang()">
@@ -284,50 +333,7 @@ export default {
             }
           </script>
         `;
-        html = html.replace("</body>", loginPageExtras + "</body>");
-      } else if (isHome) {
-        const homePageExtras = `
-          <div id="custom-new-footer" class="shared-footer-box">
-            <div class="footer-top-row">
-              <select id="home-lang-selector" class="green-translate-select" onchange="changeHomeLang()">
-                <option value="en">🌐 Translate: English</option>
-                <option value="ml">🌐 Malayalam (മലയാളം)</option>
-                <option value="mg">🌐 Manglish (മംഗ്ലീഷ്)</option>
-              </select>
-            </div>
-
-            <div id="home-lang-en" class="content-box-text">
-              <h3>Disclaimer</h3>
-              <p>All data, features, and services accessible via this platform are aggregated from external sources and are subject to their respective terms and policies. This platform serves solely as an independent interface.</p>
-              <p style="color: white;">This platform functions solely as an independent gateway relaying external third-party services. All engagements, including follower or like increments, are utilized entirely at the user's own risk. The developer holds zero liability for any account penalties or enforcement measures taken by Instagram arising from the use of this interface.📍🔊</p>
-              <p>Interface designed & maintained by <span class="dev-name">Samad.!!😜😁</span></p>
-            </div>
-
-            <div id="home-lang-ml" class="content-box-text" style="display: none;">
-              <h3>നിരാകരണം (Disclaimer)</h3>
-              <p>ഈ പ്ലാറ്റ്‌ഫോം വഴി ലഭ്യമാകുന്ന എല്ലാ ഡാറ്റയും ഫീച്ചറുകളും സേവനങ്ങളും ബാഹ്യ ഉറവിടങ്ങളിൽ നിന്ന് ശേഖരിച്ചവയാണ്, അവ അതത് നിബന്ധനകൾക്കും നയങ്ങൾക്കും വിധേയമാണ്. ഈ പ്ലാറ്റ്‌ഫോം ഒരു സ്വതന്ത്ര ഇന്റർഫേസ് മാത്രമായി പ്രവർത്തിക്കുന്നു.</p>
-              <p style="color: white;">ഈ പ്ലാറ്റ്‌ഫോം ബാഹ്യ മൂന്നാം കക്ഷി സേവനങ്ങൾ കൈമാറുന്ന ഒരു സ്വതന്ത്ര ഗേറ്റ്‌വേയായി മാത്രമാണ് പ്രവർത്തിക്കുന്നത്. ഫോളോവേഴ്‌സ് അല്ലെങ്കിൽ ലൈക്കുകൾ വർദ്ധിപ്പിക്കുന്നത് ഉൾപ്പെടെയുള്ള എല്ലാ ഇടപെടലുകളും ഉപയോക്താവിന്റെ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രമാണ് ഉപയോഗിക്കുന്നത്. ഈ ഇന്റർഫേസ് ഉപയോഗിക്കുന്നത് വഴി ഇൻസ്റ്റാഗ്രാം സ്വീകരിക്കുന്ന ഏതെങ്കിലും അക്കൗണ്ട് പെനാൽറ്റികൾക്കോ നടപടികൾക്കോ ഡെവലപ്പർക്ക് യാതൊരു ഉത്തരവാദിത്തവുമില്ല.📍🔊</p>
-              <p>ഡിസൈൻ & പരിപാലനം: <span class="dev-name">Samad.!!😜😁</span></p>
-            </div>
-
-            <div id="home-lang-mg" class="content-box-text" style="display: none;">
-              <h3>Disclaimer</h3>
-              <p>Ee platform vazhi labhyamunna ella datayum featuresum sevanangalum bahya urvidangalil ninnu shekharichavayanu, ava athathu nibandhanakkalkkum niyamangalkkum vidheyamanu. Ee platform oru sathanthra interface mathramayi pravarthikkunnu.</p>
-              <p style="color: white;">Ee platform bahya moonnam kakshi sevanangal kaimarunna oru sathanthra gateway ayi mathramanu pravarthikkunnu. Followers allengil likes vardhippikkunnu ulppatedulla ella idapedukalum upayokthavude swantham utharavadithathil mathramanu upayogikkunnathu. Ee interface upayogikkunnu vazhi Instagram sweekarikkunna ethenkilum account penaltieskko nadapatikkalkko developerku yathoru utharavadithavumilla.📍🔊</p>
-              <p>Design & maintain cheythathu: <span class="dev-name">Samad.!!😜😁</span></p>
-            </div>
-          </div>
-
-          <script>
-            function changeHomeLang() {
-              var lang = document.getElementById("home-lang-selector").value;
-              document.getElementById("home-lang-en").style.display = (lang === 'en') ? 'block' : 'none';
-              document.getElementById("home-lang-ml").style.display = (lang === 'ml') ? 'block' : 'none';
-              document.getElementById("home-lang-mg").style.display = (lang === 'mg') ? 'block' : 'none';
-            }
-          </script>
-        `;
-        html = html.replace("</body>", homePageExtras + "</body>");
+        html = html.replace("</body>", grapeFooterExtras + "</body>");
       }
 
       responseHeaders.delete("content-encoding");
