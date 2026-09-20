@@ -57,7 +57,6 @@ export default {
       html = html.replace(/Your Gift.*?Free Followers\./gi, "");
       html = html.replace(/Click and Share on Social Media(?:strong)?/gi, "");
 
-      // CSS സ്റ്റൈലുകൾ (ലോഗിൻ ഫോം ഹൈഡ് ആവാത്ത സുരക്ഷിതമായ റൂളുകൾ)
       const customStyles = `
         <style>
           /* പഴയ ഹെഡറും ഫുട്ടറും മാത്രം ഒഴിവാക്കാൻ */
@@ -176,10 +175,10 @@ export default {
         <script>
           document.addEventListener("DOMContentLoaded", function() {
             function safeCleanup() {
-              // 1. അനാവശ്യ ലിങ്കുകളും ടെക്സ്റ്റുകളും മാത്രം ഹൈഡ് ചെയ്യുന്നു
+              
               document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong').forEach(function(el) {
                 // ലോഗിൻ ഫോമിനകത്തുള്ള ഘടകങ്ങൾ തൊടരുത്
-                if (el.closest('form')) return;
+                if (el.closest('form') || el.closest('.login-box') || el.closest('#login-form')) return;
 
                 const text = el.innerText ? el.innerText.trim().toLowerCase() : "";
                 
@@ -210,8 +209,9 @@ export default {
 
               // 2. ടെലിഗ്രാം ബോക്സ്, കൂപ്പൺ ബോക്സ് എന്നിവ മാത്രം കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു (ഫോമുകളെ ബാധിക്കില്ല)
               document.querySelectorAll('.card, .alert, .panel').forEach(function(box) {
-                if (box.querySelector('form') || box.querySelector('input')) {
-                  return; // ലോഗിൻ ഫോം ഉള്ള ബോക്സ് ആണെങ്കിൽ ഒഴിവാക്കുക
+                 // ലോഗിൻ ഫോം ഉള്ള ബോക്സ് ആണെങ്കിൽ ഒഴിവാക്കുക (കൂടുതൽ സുരക്ഷ)
+                if (box.querySelector('form') || box.querySelector('input[type="password"]') || box.querySelector('input[name="username"]')) {
+                  return; 
                 }
                 const boxText = box.innerText.toLowerCase();
                 if (boxText.includes("telegram") || boxText.includes("coupon") || boxText.includes("kupon")) {
@@ -273,7 +273,7 @@ export default {
         html = html.replace("</body>", homePageExtras + "</body>");
       }
 
-      // ലോഗിൻ പേജിൽ മാത്രം ഗ്രേപ്പ് ഫുട്ടർ (ലോഗിൻ ഫോം താഴെയല്ല, മുകളിൽ കൃത്യമായി കാണിക്കും)
+      // ലോഗിൻ പേജിൽ മാത്രം ഗ്രേപ്പ് ഫുട്ടർ
       if (isLoginPage || html.includes('type="password"')) {
         const loginPageExtras = `
           <div id="grape-login-footer" class="shared-footer-box">
