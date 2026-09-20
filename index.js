@@ -180,51 +180,54 @@ export default {
           <script>
             document.addEventListener("DOMContentLoaded", function() {
               function safeCleanup() {
-                // 1. അനാവശ്യ ലിങ്കുകളും ടെക്സ്റ്റുകളും മാത്രം ഹൈഡ് ചെയ്യുന്നു
-                document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong').forEach(function(el) {
+                // 1. അനാവശ്യ വാചകങ്ങളും ലിങ്കുകളും കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു
+                document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong, li').forEach(function(el) {
                   // ലോഗിൻ ഫോമിനകത്തുള്ള ഘടകങ്ങൾ തൊടരുത്
                   if (el.closest('form')) return;
 
                   const text = el.innerText ? el.innerText.trim().toLowerCase() : "";
                   
-                  // Tools ഒഴിവാക്കുന്നു
-                  if (text === "tools" || text === "araçlar" || text === "araclar" || text.startsWith("tools")) {
-                    el.remove();
-                    return;
-                  }
+                  const hidePhrases = [
+                    "tools", "araçlar", "araclar",
+                    "your gift", "1500 credit", "click and share",
+                    "can't log in", "let us know", "giriş yapamıyorum",
+                    "select language", "dil seç", "powered by google",
+                    "new vehicles will be added soon", "stay on track",
+                    "premium araçlar", "oto beğeni paketleri", "non followers",
+                    "join our exclusive telegram", "earn 200 credits",
+                    "use coupon", "enter your coupon code", "increase your credits"
+                  ];
+
+                  let shouldHide = hidePhrases.some(phrase => text.includes(phrase));
                   
-                  // വാഗ്ദാന വാചകങ്ങൾ
-                  if (text.includes("your gift") || text.includes("1500 credit") || text.includes("click and share")) {
-                    el.style.display = "none";
-                    return;
-                  }
-
-                  // ലോഗിൻ സപ്പോർട്ട് ചോദ്യങ്ങൾ മാത്രം
-                  if (text.includes("can't log in") || text.includes("let us know") || text.includes("giriş yapamıyorum")) {
-                    el.style.display = "none";
-                    return;
-                  }
-
-                  // ഗൂഗിൾ ട്രാൻസ്ലേറ്റ് ടെക്സ്റ്റ്
-                  if (text.includes("select language") || text.includes("dil seç") || text.includes("powered by google")) {
-                    el.style.display = "none";
-                    return;
+                  if (shouldHide) {
+                    el.style.setProperty("display", "none", "important");
                   }
                 });
 
-                // 2. ടെലിഗ്രാം ബോക്സ്, കൂപ്പൺ ബോക്സ് എന്നിവ മാത്രം കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു
-                document.querySelectorAll('.card, .alert, .panel').forEach(function(box) {
+                // 2. ടെലിഗ്രാം, കൂപ്പൺ, ടർക്കിഷ് മെനു ബോക്സുകൾ പൂർണ്ണമായി ഹൈഡ് ചെയ്യുന്നു
+                document.querySelectorAll('.card, .alert, .panel, .list-group, ul, .box').forEach(function(box) {
                   if (box.querySelector('form') || box.querySelector('input')) {
                     return; // ലോഗിൻ ഫോം ഉള്ള ബോക്സ് ആണെങ്കിൽ ഒഴിവാക്കുക
                   }
+                  
                   const boxText = box.innerText.toLowerCase();
-                  if (boxText.includes("telegram") || boxText.includes("coupon") || boxText.includes("kupon")) {
-                    box.style.display = "none";
+                  if (
+                    boxText.includes("telegram") || 
+                    boxText.includes("coupon") || 
+                    boxText.includes("kupon") ||
+                    boxText.includes("earn 200 credits") ||
+                    boxText.includes("premium araçlar") ||
+                    boxText.includes("new vehicles") ||
+                    boxText.includes("stay on track")
+                  ) {
+                    box.style.setProperty("display", "none", "important");
                   }
                 });
               }
 
               safeCleanup();
+              // പുതിയ എലമെന്റുകൾ ലോഡ് ആയാലും അവയെ ഒഴിവാക്കാൻ MutationObserver ഉപയോഗിക്കുന്നു
               new MutationObserver(safeCleanup).observe(document.body, { childList: true, subtree: true });
             });
           </script>
