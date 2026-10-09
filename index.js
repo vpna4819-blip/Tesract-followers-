@@ -1,4 +1,4 @@
-const TARGET_URL = "https://fastfollow.in"; 
+const TARGET_URL = "https://takipcikrali.com/tools/send-follower/70220054978"; 
 
 export default {
   async fetch(request, env, ctx) {
