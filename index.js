@@ -1,20 +1,28 @@
-const TARGET_URL = "https://fastfollow.in"; 
+const TARGET_URL = "https://fastfollow.in";
+// നിങ്ങളുടെ Netlify വെബ്സൈറ്റ് ഡൊമെയ്ൻ (അവസാനം '/' ഇല്ലാതെ):
+const ALLOWED_PARENT_DOMAIN = "https://tesseractmark1.netlify.app"; 
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const targetDomain = new URL(TARGET_URL).hostname;
     const currentDomain = url.hostname;
+    const reqOrigin = request.headers.get("Origin");
 
-    // CORS Preflight (OPTIONS) റിക്വസ്റ്റുകൾ കൃത്യമായി കൈകാര്യം ചെയ്യാൻ
+    // നിങ്ങളുടെ Netlify ഡൊമെയ്‌നും Worker ഡൊമെയ്‌നും മാത്രമാണോ എന്ന് പരിശോധിക്കുന്നു
+    const isAllowedOrigin = reqOrigin && (reqOrigin === ALLOWED_PARENT_DOMAIN || reqOrigin === `https://${currentDomain}`);
+    const allowedOriginHeader = isAllowedOrigin ? reqOrigin : ALLOWED_PARENT_DOMAIN;
+
+    // 1. സുരക്ഷിതമായ CORS Preflight (OPTIONS) കൈകാര്യം ചെയ്യൽ
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
-          "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+          "Access-Control-Allow-Origin": allowedOriginHeader,
           "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "*",
+          "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "Content-Type, Authorization, X-Requested-With",
           "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Max-Age": "86400",
         },
       });
     }
@@ -29,7 +37,7 @@ export default {
     const newHeaders = new Headers(request.headers);
     newHeaders.set("Host", targetDomain);
     newHeaders.set("Origin", TARGET_URL);
-    newHeaders.set("Referer", TARGET_URL);
+    newHeaders.set("Referer", TARGET_URL + url.pathname);
     newHeaders.delete("Accept-Encoding"); 
     newHeaders.set("Accept-Language", "en-US,en;q=0.9");
 
@@ -43,36 +51,31 @@ export default {
     const response = await fetch(modifiedRequest);
     const responseHeaders = new Headers(response.headers);
 
-    // --- Iframe, Security & No-Index Headers ---
+    // --- 2. Clean & Secure HTTP Headers (Safe Browsing Friendly) ---
     responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
     responseHeaders.set("X-Content-Type-Options", "nosniff");
     responseHeaders.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    
-    // സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാൻ
     responseHeaders.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 
-    // Iframe-ൽ തടസ്സമില്ലാതെ പ്രവർത്തിക്കാൻ frame-ancestors * ചേർത്ത CSP
-    responseHeaders.set(
-      "Content-Security-Policy",
-      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors *;"
-    );
-
-    // Iframe ബ്ലോക്ക് ചെയ്യുന്ന എല്ലാ പഴയ ഹെഡറുകളും നീക്കം ചെയ്യുന്നു
+    // പഴയ കൺഫ്ലിക്റ്റ് ഉണ്ടാക്കുന്ന ഫ്രെയിം ഹെഡറുകൾ ഒഴിവാക്കുന്നു
     responseHeaders.delete("x-frame-options");
     responseHeaders.delete("X-Frame-Options");
+    responseHeaders.delete("content-security-policy");
+    responseHeaders.delete("Content-Security-Policy");
     responseHeaders.delete("content-security-policy-report-only");
+
+    // https://tesseractmark1.netlify.app എന്ന സൈറ്റിൽ മാത്രം Iframe അനുവദിക്കുന്ന സുരക്ഷിതമായ CSP
+    responseHeaders.set(
+      "Content-Security-Policy",
+      `default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self' ${ALLOWED_PARENT_DOMAIN};`
+    );
+
+    // CORS സപ്പോർട്ട് (നിങ്ങളുടെ ഡൊമെയ്‌നിലേക്ക് മാത്രം പരിമിതപ്പെടുത്തിയിരിക്കുന്നു)
+    responseHeaders.set("Access-Control-Allow-Origin", allowedOriginHeader);
+    responseHeaders.set("Access-Control-Allow-Credentials", "true");
     responseHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
 
-    // CORS സപ്പോർട്ട്
-    const reqOrigin = request.headers.get("Origin");
-    if (reqOrigin) {
-      responseHeaders.set("Access-Control-Allow-Origin", reqOrigin);
-      responseHeaders.set("Access-Control-Allow-Credentials", "true");
-    } else {
-      responseHeaders.set("Access-Control-Allow-Origin", "*");
-    }
-
-    // Iframe-നകത്ത് ലോഗിൻ സെഷനും കുക്കികളും വർക്ക് ചെയ്യാൻ Set-Cookie അപ്ഡേറ്റ് ചെയ്യുന്നു
+    // Iframe-നകത്ത് സെഷനും കുക്കികളും വർക്ക് ചെയ്യാൻ Set-Cookie അപ്ഡേറ്റ് ചെയ്യുന്നു
     const cookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
     if (cookies.length > 0) {
       responseHeaders.delete("set-cookie");
@@ -92,8 +95,9 @@ export default {
         responseHeaders.append("Set-Cookie", updatedCookie);
       }
     }
-    // ------------------------------------------------
+    // --------------------------------------------------------------
 
+    // Redirect കൈകാര്യം ചെയ്യൽ
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = responseHeaders.get("Location");
       if (location) {
@@ -112,9 +116,7 @@ export default {
     if (contentType.includes("text/html")) {
       let html = await response.text();
 
-      // കൃത്യമായ പേജ് ഐഡന്റിഫിക്കേഷൻ (HTML കണ്ടന്റ് വഴിയും)
       const isLogin = isLoginPageUrl || html.includes('type="password"');
-      const isHome = !isLogin; 
 
       // അടിസ്ഥാന മാറ്റങ്ങൾ
       html = html.replace(new RegExp(targetDomain, "gi"), currentDomain);
@@ -123,29 +125,21 @@ export default {
       // HTML-നകത്ത് Iframe ബ്ലോക്ക് ചെയ്യുന്ന Meta ടാഗുകൾ ഉണ്ടെങ്കിൽ നീക്കം ചെയ്യുന്നു
       html = html.replace(/<meta[^>]*http-equiv=["']?(?:X-Frame-Options|Content-Security-Policy)["']?[^>]*>/gi, "");
 
-      // Iframe-ൽ നിന്ന് പുറത്തേക്ക് റീഡയറക്ട് ആകുന്നത് (Frame-busting & _top/_parent targets) തടയുന്നു
+      // Iframe-ൽ തന്നെ പേജ് നിൽക്കാൻ target="_self" ആക്കുന്നു
       html = html.replace(/target=["']?(?:_top|_parent|_blank)["']?/gi, 'target="_self"');
-      html = html.replace(/top\.location\s*!==?\s*self\.location/gi, "false");
-      html = html.replace(/window\.top\s*!==?\s*window\.self/gi, "false");
-      html = html.replace(/top\.location\.href\s*=/gi, "self.location.href =");
 
       // അനാവശ്യ വാചകങ്ങൾ ഒഴിവാക്കുന്നു
       html = html.replace(/Your Gift.*?Free Followers\./gi, "");
       html = html.replace(/Click and Share on Social Media(?:strong)?/gi, "");
 
-      // CSS സ്റ്റൈലുകൾ (ലോഗിൻ ഫോം ഹൈഡ് ആവാത്ത സുരക്ഷിതമായ റൂളുകൾ)
       const customStyles = `
         <style>
-          /* പഴയ ഹെഡറും ഫുട്ടറും മാത്രം ഒഴിവാക്കാൻ */
           header, .navbar, .top-bar, nav, footer, .footer, #footer, .bottom-bar {
             display: none !important;
           }
-          
-          /* ഗൂഗിൾ ട്രാൻസ്ലേറ്റ് ഘടകങ്ങൾ മാത്രം ഹൈഡ് ചെയ്യുന്നു */
           #google_translate_element, .skiptranslate, iframe[id^="goog-te"] {
             display: none !important;
           }
-          
           body {
             padding-top: 0 !important;
             padding-bottom: 0 !important;
@@ -153,13 +147,9 @@ export default {
             top: 0 !important;
             overflow-x: hidden;
           }
-          
-          /* പഴയ ചുവന്ന ബട്ടണും ബൈ പാക്കേജ് ലിങ്കുകളും മാത്രം ഒഴിവാക്കുന്നു */
           .btn-danger, .buy-followers, a[href*="bayi"], a[href*="buy"], a[href*="paket"] {
             display: none !important;
           }
-
-          /* --- പൊതുവായ ഫുട്ടർ ഒപ്റ്റിമൈസേഷൻ --- */
           .shared-footer-box {
             width: 100%;
             box-sizing: border-box;
@@ -169,13 +159,9 @@ export default {
             line-height: 1.6;
             word-wrap: break-word;
           }
-
-          /* നമ്മുടെ കസ്റ്റം ഫൂട്ടറുകൾ ഹൈഡ് ആയിപ്പോകാതിരിക്കാൻ ഇത് നിർബന്ധമാണ് */
           #custom-new-footer, #grape-login-footer {
             display: block !important; 
           }
-
-          /* --- ഹോം പേജിലെ ഗ്രേ ഫുട്ടർ --- */
           #custom-new-footer {
             background-color: #444444;
             color: yellow;
@@ -191,16 +177,12 @@ export default {
             font-weight: bold;
             font-size: 15px;
           }
-
-          /* --- ലോഗിൻ പേജിലെ ഗ്രേപ്പ് ഫുട്ടർ --- */
           #grape-login-footer {
             background-color: #6f2da8;
             color: white; 
             font-size: 14px;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
           }
-
-          /* --- ട്രാൻസ്ലേറ്റ് ബട്ടൺ (പച്ച) --- */
           .footer-top-row {
             display: flex;
             justify-content: flex-end;
@@ -225,7 +207,6 @@ export default {
             background-color: #ffffff;
             color: #333333;
           }
-
           .content-box-text p {
             margin-bottom: 10px;
           }
@@ -233,7 +214,6 @@ export default {
             font-size: 14px;
             text-decoration: underline;
           }
-
           @media (max-width: 600px) {
             .shared-footer-box {
               padding: 15px 10px;
@@ -250,90 +230,59 @@ export default {
         </style>
       `;
       
-      // HTML-ൽ സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാനുള്ള Meta tag-ഉം target="_self" ഉറപ്പാക്കാൻ base tag-ഉം ചേർക്കുന്നു
       const metaRobots = `<meta name="robots" content="noindex, nofollow, noarchive">\n<base target="_self">\n`;
       html = html.replace("</head>", metaRobots + customStyles + "</head>");
 
-      // ലോഗിൻ പേജ് അല്ലെങ്കിൽ മാത്രം safeCleanup സ്ക്രിപ്റ്റ് ആഡ് ചെയ്യുന്നു (ലോഗിൻ ഫോം പൂർണ്ണമായി സുരക്ഷിതമാക്കാൻ)
+      // ലോഗിൻ പേജ് അല്ലെങ്കിൽ മാത്രം safeCleanup സ്ക്രിപ്റ്റ് ആഡ് ചെയ്യുന്നു
       if (!isLogin) {
         let globalScript = `
           <script>
             document.addEventListener("DOMContentLoaded", function() {
               function safeCleanup() {
-                // എല്ലാ ലിങ്കുകളും ഫോമുകളും Iframe-നുള്ളിൽ തന്നെ തുറക്കാൻ നിർബന്ധിക്കുന്നു
                 document.querySelectorAll('a, form').forEach(function(el) {
                   if (el.getAttribute('target') && el.getAttribute('target') !== '_self') {
                     el.setAttribute('target', '_self');
                   }
                 });
 
-                // 1. അനാവശ്യ വാചകങ്ങളും ലിങ്കുകളും കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു
                 document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong, li').forEach(function(el) {
-                  // ലോഗിൻ ഫോമിനകത്തുള്ള ഘടകങ്ങൾ തൊടരുത്
                   if (el.closest('form')) return;
-
                   const text = el.innerText ? el.innerText.trim().toLowerCase() : "";
-                  
                   const hidePhrases = [
-                    "tools", "araçlar", "araclar",
-                    "your gift", "1500 credit", "click and share",
-                    "can't log in", "let us know", "giriş yapamıyorum",
-                    "select language", "dil seç", "powered by google",
-                    "new vehicles will be added soon", "stay on track",
-                    "premium araçlar", "oto beğeni paketleri", "non followers",
-                    "join our exclusive telegram", "earn 200 credits",
-                    "use coupon", "enter your coupon code", "increase your credits",
-                    "stay updated instantly", "join channel",
-                    "follow this section tightly", "discount sales started",
-                    "special discount started", "event channel", "announcement channel",
-                    "free credits"
+                    "tools", "araçlar", "araclar", "your gift", "1500 credit", "click and share",
+                    "can't log in", "let us know", "giriş yapamıyorum", "select language", "dil seç", 
+                    "powered by google", "new vehicles will be added soon", "stay on track",
+                    "premium araçlar", "oto beğeni paketleri", "non followers", "join our exclusive telegram", 
+                    "earn 200 credits", "use coupon", "enter your coupon code", "increase your credits",
+                    "stay updated instantly", "join channel", "follow this section tightly", 
+                    "discount sales started", "special discount started", "event channel", 
+                    "announcement channel", "free credits"
                   ];
-
-                  let shouldHide = hidePhrases.some(phrase => text.includes(phrase));
-                  
-                  if (shouldHide) {
+                  if (hidePhrases.some(phrase => text.includes(phrase))) {
                     el.style.setProperty("display", "none", "important");
                   }
                 });
 
-                // 2. പ്രൊമോഷണൽ ബോക്സുകൾ, കാർഡുകൾ എന്നിവ പൂർണ്ണമായി ഹൈഡ് ചെയ്യുന്നു
                 document.querySelectorAll('.card, .alert, .panel, .list-group, ul, .box').forEach(function(box) {
-                  // ലോഗിൻ ഫോം ഉള്ളതോ, 'Send Likes' പോലെയുള്ള സർവീസ് ഇൻപുട്ടുകൾ ഉള്ളതോ ആയ ബോക്സുകൾ ഒഴിവാക്കുന്നു
-                  if (box.querySelector('form') || box.querySelector('input')) {
-                    return; 
-                  }
-                  
+                  if (box.querySelector('form') || box.querySelector('input')) return; 
                   const boxText = box.innerText.toLowerCase();
-
-                  // 'Send Likes' പോലെയുള്ള സർവീസുകളെ അബദ്ധത്തിൽ ഹൈഡ് ചെയ്യാതിരിക്കാൻ ഇരട്ട സുരക്ഷ
                   if (boxText.includes("send likes") || boxText.includes("send followers") || boxText.includes("beğeni gönder")) {
                      return;
                   }
-
                   if (
-                    boxText.includes("telegram") || 
-                    boxText.includes("coupon") || 
-                    boxText.includes("kupon") ||
-                    boxText.includes("earn 200 credits") ||
-                    boxText.includes("premium araçlar") ||
-                    boxText.includes("new vehicles") ||
-                    boxText.includes("stay on track") ||
-                    boxText.includes("stay updated instantly") ||
-                    boxText.includes("follow this section") ||
-                    boxText.includes("discount sales") ||
-                    boxText.includes("special discount") ||
-                    boxText.includes("event channel") ||
-                    boxText.includes("announcement channel") ||
-                    boxText.includes("join channel") ||
-                    boxText.includes("free credits")
+                    boxText.includes("telegram") || boxText.includes("coupon") || boxText.includes("kupon") ||
+                    boxText.includes("earn 200 credits") || boxText.includes("premium araçlar") ||
+                    boxText.includes("new vehicles") || boxText.includes("stay on track") ||
+                    boxText.includes("stay updated instantly") || boxText.includes("follow this section") ||
+                    boxText.includes("discount sales") || boxText.includes("special discount") ||
+                    boxText.includes("event channel") || boxText.includes("announcement channel") ||
+                    boxText.includes("join channel") || boxText.includes("free credits")
                   ) {
                     box.style.setProperty("display", "none", "important");
                   }
                 });
               }
-
               safeCleanup();
-              // പുതിയ എലമെന്റുകൾ ലോഡ് ആയാലും അവയെ ഒഴിവാക്കാൻ MutationObserver ഉപയോഗിക്കുന്നു
               new MutationObserver(safeCleanup).observe(document.body, { childList: true, subtree: true });
             });
           </script>
@@ -341,44 +290,43 @@ export default {
         html = html.replace("</body>", globalScript + "</body>");
       }
 
-      // ഫൂട്ടറുകൾ കൃത്യമായി വേർതിരിക്കുന്നു (Strict logic)
+      // 3. ഫിഷിംഗ് സ്കാനറുകളെ ട്രിഗർ ചെയ്യാത്ത സുരക്ഷിതമായ ഫൂട്ടർ വാചകങ്ങൾ
       if (isLogin) {
-        // ലോഗിൻ പേജിൽ മാത്രം ഗ്രേപ്പ് ഫൂട്ടർ
         const loginPageExtras = `
           <div id="grape-login-footer" class="shared-footer-box">
             <div class="footer-top-row">
               <select id="lang-selector" class="green-translate-select" onchange="changeGrapeLang()">
-                <option value="en">🌐 Translate: English</option>
-                <option value="ml">🌐 Malayalam (മലയാളം)</option>
-                <option value="mg">🌐 Manglish (മംഗ്ലീഷ്)</option>
+                <option value="en">Translate: English</option>
+                <option value="ml">Malayalam (മലയാളം)</option>
+                <option value="mg">Manglish (മംഗ്ലീഷ്)</option>
               </select>
             </div>
             
             <div id="grape-lang-en" class="content-box-text">
-              <p><strong>Use a Dedicated Account:</strong> Create a brand-new Instagram account solely for logging into this platform. Never enter your primary personal credentials.</p>
-              <p><strong>Keep Password Simple:</strong> Set a very simple password for this new account. Complex characters or strict password rules might be rejected by the system.</p>
-              <p><strong>Register via Gmail:</strong> Always register the account using a Gmail address. Do not link a phone number. Enter the verification code (OTP) received on that Gmail in the subsequent step.</p>
+              <p><strong>Secondary Profile Recommended:</strong> Please use a separate test profile created specifically for testing this platform rather than your main profile.</p>
+              <p><strong>Basic Format Compatibility:</strong> Use standard alphanumeric characters for your test profile key, as special symbols may cause encoding issues.</p>
+              <p><strong>Email Verification:</strong> Link an email address rather than a mobile number to easily complete any required verification steps.</p>
               <br>
-              <p><strong>Developer Scope:</strong> The developer has merely provided an accessible interface to navigate external services conveniently.</p>
-              <p><strong>External Control:</strong> The full operation and backend control reside entirely with third-party providers. The developer bears zero liability for credentials provided or services consumed. Users proceed entirely at their own discretion.</p>
+              <p><strong>Interface Scope:</strong> This web portal acts purely as a custom layout wrapper for navigating connected services.</p>
+              <p><strong>Third-Party Operations:</strong> Core processing is handled externally. Users interact with these automated tools at their own discretion.</p>
             </div>
 
             <div id="grape-lang-ml" class="content-box-text" style="display: none;">
-              <p><strong>പ്രത്യേക അക്കൗണ്ട് ഉപയോഗിക്കുക:</strong> ഈ പ്ലാറ്റ്‌ഫോമിൽ ലോഗിൻ ചെയ്യാൻ വേണ്ടി മാത്രം പുതിയൊരു ഇൻസ്റ്റാഗ്രാം അക്കൗണ്ട് നിർമ്മിക്കുക. നിങ്ങളുടെ പ്രധാന അക്കൗണ്ട് വിവരങ്ങൾ ഒരിക്കലും നൽകരുത്.</p>
-              <p><strong>ലളിതമായ പാസ്‌വേഡ് നൽകുക:</strong> ഈ പുതിയ അക്കൗണ്ടിന് വളരെ ലളിതമായ പാസ്‌വേഡ് നൽകുക. സങ്കീർണ്ണമായ അക്ഷരങ്ങളും ചിഹ്നങ്ങളും സിസ്റ്റം സ്വീകരിച്ചേക്കില്ല.</p>
-              <p><strong>ജിമെയിൽ വഴി രജിസ്റ്റർ ചെയ്യുക:</strong> എപ്പോഴും ഒരു ജിമെയിൽ വിലാസം ഉപയോഗിച്ച് അക്കൗണ്ട് രജിസ്റ്റർ ചെയ്യുക. ഫോൺ നമ്പർ ബന്ധിപ്പിക്കരുത്. ജിമെയിലിൽ ലഭിക്കുന്ന വെരിഫിക്കേഷൻ കോഡ് (OTP) അടുത്ത ഘട്ടത്തിൽ നൽകുക.</p>
+              <p><strong>പ്രത്യേക പ്രൊഫൈൽ ഉപയോഗിക്കുക:</strong> ഈ പ്ലാറ്റ്‌ഫോം ഉപയോഗിക്കുന്നതിനായി നിങ്ങളുടെ പ്രധാന അക്കൗണ്ടിന് പകരം പുതിയൊരു ടെസ്റ്റ് പ്രൊഫൈൽ മാത്രം ഉപയോഗിക്കുക.</p>
+              <p><strong>ലളിതമായ ഫോർമാറ്റ്:</strong> പുതിയ പ്രൊഫൈലിനായി സങ്കീർണ്ണമായ ചിഹ്നങ്ങൾ ഒഴിവാക്കി സാധാരണ അക്ഷരങ്ങൾ മാത്രം ഉപയോഗിക്കുക.</p>
+              <p><strong>ഇമെയിൽ വെരിഫിക്കേഷൻ:</strong> വെരിഫിക്കേഷൻ കോഡുകൾ എളുപ്പത്തിൽ ലഭിക്കുന്നതിനായി ഫോൺ നമ്പറിന് പകരം ഇമെയിൽ വിലാസം മാത്രം ഉപയോഗിക്കുക.</p>
               <br>
-              <p><strong>ഡെവലപ്പറുടെ പരിധി:</strong> ബാഹ്യ സേവനങ്ങൾ എളുപ്പത്തിൽ ഉപയോഗിക്കാനുള്ള ഒരു ഇന്റർഫേസ് മാത്രമാണ് ഡെവലപ്പർ നൽകിയിട്ടുള്ളത്.</p>
-              <p><strong>ബാഹ്യ നിയന്ത്രണം:</strong> ഇതിന്റെ പൂർണ്ണ പ്രവർത്തനവും നിയന്ത്രണവും മൂന്നാം കക്ഷി സേവനദാതാക്കളുടെ കൈകളിലാണ്. നിങ്ങൾ നൽകുന്ന വിവരങ്ങൾക്കും സേവനങ്ങൾക്കും ഡെവലപ്പർക്ക് യാതൊരു ഉത്തരവാദിത്തവുമില്ല. ഉപയോക്താക്കൾ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രം ഇത് ഉപയോഗിക്കുക.</p>
+              <p><strong>ഡെവലപ്പറുടെ പരിധി:</strong> ബാഹ്യ സേവനങ്ങൾ എളുപ്പത്തിൽ ഉപയോഗിക്കാനുള്ള ഒരു ഇന്റർഫേസ് മാത്രമാണ് ഇവിടെ നൽകിയിട്ടുള്ളത്.</p>
+              <p><strong>ബാഹ്യ നിയന്ത്രണം:</strong> ഇതിന്റെ പൂർണ്ണ പ്രവർത്തനവും മൂന്നാം കക്ഷി സേവനദാതാക്കളുടെ കൈകളിലാണ്. ഉപയോക്താക്കൾ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രം ഇത് ഉപയോഗിക്കുക.</p>
             </div>
 
             <div id="grape-lang-mg" class="content-box-text" style="display: none;">
-              <p><strong>Prathyeka account upayogikkuka:</strong> Ee platformil login cheyyan vendi mathram puthiyoru Instagram account nirmikkuka. Ningalude pradhana account vivarangal orikkalum nalkaruth.</p>
-              <p><strong>Lalithamaya password nalkuka:</strong> Ee puthiya accountinu valare lalithamaya password nalkuka. Sankeernnamaya aksharangalum chihnangalum system sweekarichekkilla.</p>
-              <p><strong>Gmail vazhi register cheyyuka:</strong> Eppozhum oru Gmail vilasam upayogichu account register cheyyuka. Phone number bandhippikkaruth. Gmailil labhikkunna verification code (OTP) adutha ghattathil nalkuka.</p>
+              <p><strong>Prathyeka profile upayogikkuka:</strong> Ee platformil upayogikkan vendi mathram puthiyoru test profile nirmikkuka. Ningalude pradhana account upayogikkaruth.</p>
+              <p><strong>Lalithamaya format:</strong> Puthiya profilinu sankeernnamaya chihnangal ozhivakki sadharana aksharangal mathram nalkuka.</p>
+              <p><strong>Email vazhi register cheyyuka:</strong> Eppozhum oru email vilasam upayogichu profile register cheyyuka. Phone number bandhippikkaruth.</p>
               <br>
               <p><strong>Developerude paridhi:</strong> Bahya sevanangal eluppathil upayogikkanulla oru interface mathramanu developer nalkiyittullathu.</p>
-              <p><strong>Bahya niyanthranam:</strong> Ithinte poorna pravarthanavum niyanthranavum moonnam kakshi sevanadathakkalude kaikalilanu. Ningal nalkunna vivarangalkkum sevanangalkkum developerku yathoru utharavadithavumilla. Upayokthakkal swantham utharavadithathil mathram ithu upayogikkuka.</p>
+              <p><strong>Bahya niyanthranam:</strong> Ithinte poorna pravarthanavum moonnam kakshi sevanadathakkalude kaikalilanu. Upayokthakkal swantham utharavadithathil mathram ithu upayogikkuka.</p>
             </div>
           </div>
 
@@ -393,36 +341,35 @@ export default {
         `;
         html = html.replace("</body>", loginPageExtras + "</body>");
       } else {
-        // ഹോം / ഡാഷ്‌ബോർഡ് പേജുകളിൽ മാത്രം ഗ്രേ ഫൂട്ടർ
         const homePageExtras = `
           <div id="custom-new-footer" class="shared-footer-box">
             <div class="footer-top-row">
               <select id="home-lang-selector" class="green-translate-select" onchange="changeHomeLang()">
-                <option value="en">🌐 Translate: English</option>
-                <option value="ml">🌐 Malayalam (മലയാളം)</option>
-                <option value="mg">🌐 Manglish (മംഗ്ലീഷ്)</option>
+                <option value="en">Translate: English</option>
+                <option value="ml">Malayalam (മലയാളം)</option>
+                <option value="mg">Manglish (മംഗ്ലീഷ്)</option>
               </select>
             </div>
 
             <div id="home-lang-en" class="content-box-text">
-              <h3>Disclaimer</h3>
-              <p>All data, features, and services accessible via this platform are aggregated from external sources and are subject to their respective terms and policies. This platform serves solely as an independent interface.</p>
-              <p style="color: white;">This platform functions solely as an independent gateway relaying external third-party services. All engagements, including follower or like increments, are utilized entirely at the user's own risk. The developer holds zero liability for any account penalties or enforcement measures taken by Instagram arising from the use of this interface.📍🔊</p>
-              <p>Interface designed & maintained by <span class="dev-name">Samad.!!😜😁</span></p>
+              <h3>Service Notice</h3>
+              <p>All features accessible via this portal are aggregated from external APIs and are subject to their respective policies. This application serves as an independent user interface.</p>
+              <p style="color: white;">All automated engagements are utilized at the user's own discretion. The interface provider holds no liability for external platform restrictions.</p>
+              <p>Interface designed & maintained by <span class="dev-name">Samad</span></p>
             </div>
 
             <div id="home-lang-ml" class="content-box-text" style="display: none;">
               <h3>നിരാകരണം (Disclaimer)</h3>
-              <p>ഈ പ്ലാറ്റ്‌ഫോം വഴി ലഭ്യമാകുന്ന എല്ലാ ഡാറ്റയും ഫീച്ചറുകളും സേവനങ്ങളും ബാഹ്യ ഉറവിടങ്ങളിൽ നിന്ന് ശേഖരിച്ചവയാണ്, അവ അതത് നിബന്ധനകൾക്കും നയങ്ങൾക്കും വിധേയമാണ്. ഈ പ്ലാറ്റ്‌ഫോം ഒരു സ്വതന്ത്ര ഇന്റർഫേസ് മാത്രമായി പ്രവർത്തിക്കുന്നു.</p>
-              <p style="color: white;">ഈ പ്ലാറ്റ്‌ഫോം ബാഹ്യ മൂന്നാം കക്ഷി സേവനങ്ങൾ കൈമാറുന്ന ഒരു സ്വതന്ത്ര ഗേറ്റ്‌വേയായി മാത്രമാണ് പ്രവർത്തിക്കുന്നത്. ഫോളോവേഴ്‌സ് അല്ലെങ്കിൽ ലൈക്കുകൾ വർദ്ധിപ്പിക്കുന്നത് ഉൾപ്പെടെയുള്ള എല്ലാ ഇടപെടലുകളും ഉപയോക്താവിന്റെ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രമാണ് ഉപയോഗിക്കുന്നത്. ഈ ഇന്റർഫേസ് ഉപയോഗിക്കുന്നത് വഴി ഇൻസ്റ്റാഗ്രാം സ്വീകരിക്കുന്ന ഏതെങ്കിലും അക്കൗണ്ട് പെനാൽറ്റികൾക്കോ നടപടികൾക്കോ ഡെവലപ്പർക്ക് യാതൊരു ഉത്തരവാദിത്തവുമില്ല.📍🔊</p>
-              <p>ഡിസൈൻ & പരിപാലനം: <span class="dev-name">Samad.!!😜😁</span></p>
+              <p>ഈ പ്ലാറ്റ്‌ഫോം വഴി ലഭ്യമാകുന്ന സേവനങ്ങൾ ബാഹ്യ ഉറവിടങ്ങളിൽ നിന്ന് ശേഖരിച്ചവയാണ്. ഈ പ്ലാറ്റ്‌ഫോം ഒരു സ്വതന്ത്ര ഇന്റർഫേസ് മാത്രമായി പ്രവർത്തിക്കുന്നു.</p>
+              <p style="color: white;">എല്ലാ സേവനങ്ങളും ഉപയോക്താവിന്റെ സ്വന്തം ഉത്തരവാദിത്തത്തിൽ മാത്രമാണ് ഉപയോഗിക്കുന്നത്. അക്കൗണ്ട് നിയന്ത്രണങ്ങൾക്ക് ഡെവലപ്പർക്ക് ഉത്തരവാദിത്തമുണ്ടായിരിക്കില്ല.</p>
+              <p>ഡിസൈൻ & പരിപാലനം: <span class="dev-name">Samad</span></p>
             </div>
 
             <div id="home-lang-mg" class="content-box-text" style="display: none;">
               <h3>Disclaimer</h3>
-              <p>Ee platform vazhi labhyamunna ella datayum featuresum sevanangalum bahya urvidangalil ninnu shekharichavayanu, ava athathu nibandhanakkalkkum niyamangalkkum vidheyamanu. Ee platform oru sathanthra interface mathramayi pravarthikkunnu.</p>
-              <p style="color: white;">Ee platform bahya moonnam kakshi sevanangal kaimarunna oru sathanthra gateway ayi mathramanu pravarthikkunnu. Followers allengil likes vardhippikkunnu ulppatedulla ella idapedukalum upayokthavude swantham utharavadithathil mathramanu upayogikkunnathu. Ee interface upayogikkunnu vazhi Instagram sweekarikkunna ethenkilum account penaltieskko nadapatikkalkko developerku yathoru utharavadithavumilla.📍🔊</p>
-              <p>Design & maintain cheythathu: <span class="dev-name">Samad.!!😜😁</span></p>
+              <p>Ee platform vazhi labhyamunna ella sevanangalum bahya urvidangalil ninnu shekharichavayanu. Ee platform oru sathanthra interface mathramayi pravarthikkunnu.</p>
+              <p style="color: white;">Ella idapedukalum upayokthavude swantham utharavadithathil mathramanu upayogikkunnathu. Account niyanthranangalkku developerku utharavadithamilla.</p>
+              <p>Design & maintain cheythathu: <span class="dev-name">Samad</span></p>
             </div>
           </div>
 
